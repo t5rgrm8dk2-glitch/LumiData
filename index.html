@@ -493,7 +493,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </div>
 
 <div class="toast" id="toast"></div>
-<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:var(--text2);opacity:0.45;z-index:50;pointer-events:none;user-select:none">V 1.0</div>
+<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:var(--text2);opacity:0.45;z-index:50;pointer-events:none;user-select:none">V 1.1</div>
 
 <script>
 const DB_KEY = 'luminarias_db_v2';
@@ -501,11 +501,34 @@ let usuario = '';
 
 
 // ---- STORAGE FALLBACK (funciona con file:// y sin localStorage) ----
+// _mem actúa como caché de escritura: se actualiza SIEMPRE en set(), así que get()
+// nunca queda "ciego" si localStorage.setItem falla en silencio (p. ej. cuota
+// excedida por fotos en base64) — antes esto causaba que un registro recién
+// guardado "desapareciera" al verificarlo.
 const _mem = {};
+let _storageLlena = false;
 const store = {
-  get(k) { try { return localStorage.getItem(k); } catch(e) { return _mem[k]||null; } },
-  set(k,v) { try { localStorage.setItem(k,v); } catch(e) { _mem[k]=v; } },
-  remove(k) { try { localStorage.removeItem(k); } catch(e) { delete _mem[k]; } }
+  get(k) {
+    if (k in _mem) return _mem[k];
+    try { return localStorage.getItem(k); } catch(e) { return null; }
+  },
+  set(k, v) {
+    _mem[k] = v;
+    try {
+      localStorage.setItem(k, v);
+      _storageLlena = false;
+    } catch(e) {
+      if (!_storageLlena) {
+        _storageLlena = true;
+        console.warn('No se pudo escribir en localStorage (posible cuota excedida). Los datos siguen disponibles en esta sesión, pero se perderán al recargar la página si no hay una carpeta vinculada.', e);
+        setTimeout(() => showToast('⚠️ Almacenamiento del navegador lleno. Vincula una carpeta en Configuración para no perder datos.', 'error'), 300);
+      }
+    }
+  },
+  remove(k) {
+    delete _mem[k];
+    try { localStorage.removeItem(k); } catch(e) {}
+  }
 };
 
 // ---- INIT ----
