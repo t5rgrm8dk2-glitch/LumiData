@@ -342,6 +342,10 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     <div class="stat"><div class="stat-num" id="statPending">0</div><div class="stat-label">Pendientes</div></div>
   </div>
   <button class="btn btn-secondary" onclick="sincronizarAhora()" style="margin-bottom:12px">🔄 Sincronizar ahora</button>
+  <div style="display:flex;gap:8px;margin-bottom:14px">
+    <button class="btn-gps-mode active" id="btnOrdenFecha" onclick="cambiarOrdenLista('fecha')">📅 Por Fecha</button>
+    <button class="btn-gps-mode" id="btnOrdenTransformador" onclick="cambiarOrdenLista('transformador')">🔌 Por Transformador</button>
+  </div>
   <div id="listaContainer"></div>
   <button class="btn-discreet" onclick="eliminarRegistrosHoy()">🗑 Eliminar registros de hoy</button>
 </div>
@@ -493,7 +497,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </div>
 
 <div class="toast" id="toast"></div>
-<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:var(--text2);opacity:0.45;z-index:50;pointer-events:none;user-select:none">V 1.1</div>
+<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:var(--text2);opacity:0.45;z-index:50;pointer-events:none;user-select:none">V 1.2.</div>
 
 <script>
 const DB_KEY = 'luminarias_db_v2';
@@ -1244,6 +1248,17 @@ function updateSyncBar() {
   }
 }
 
+// ---- ORDEN DE LA LISTA (fecha / transformador) ----
+let listaOrden = store.get('lum_lista_orden') || 'fecha';
+
+function cambiarOrdenLista(modo) {
+  listaOrden = modo;
+  store.set('lum_lista_orden', modo);
+  document.getElementById('btnOrdenFecha').classList.toggle('active', modo === 'fecha');
+  document.getElementById('btnOrdenTransformador').classList.toggle('active', modo === 'transformador');
+  renderLista();
+}
+
 // ---- RENDER LISTA ----
 function renderLista() {
   const db = getDB();
@@ -1261,15 +1276,27 @@ function renderLista() {
     return;
   }
 
-  const byDay = {};
-  db.forEach(r => { if (!byDay[r.fecha]) byDay[r.fecha] = []; byDay[r.fecha].push(r); });
-  const dias = Object.keys(byDay).sort((a,b) => b.localeCompare(a));
+  const porTransformador = listaOrden === 'transformador';
+  const btnF = document.getElementById('btnOrdenFecha');
+  const btnT = document.getElementById('btnOrdenTransformador');
+  if (btnF && btnT) {
+    btnF.classList.toggle('active', !porTransformador);
+    btnT.classList.toggle('active', porTransformador);
+  }
+  const byGroup = {};
+  db.forEach(r => {
+    const key = porTransformador ? (r.transformador || 'SIN TRANSFORMADOR') : r.fecha;
+    if (!byGroup[key]) byGroup[key] = [];
+    byGroup[key].push(r);
+  });
+  const grupos = Object.keys(byGroup).sort((a,b) => porTransformador ? a.localeCompare(b, 'es', {numeric:true}) : b.localeCompare(a));
 
   let html = '';
-  dias.forEach(dia => {
-    const regs = byDay[dia];
+  grupos.forEach(grupo => {
+    const regs = byGroup[grupo];
+    const titulo = porTransformador ? `🔌 ${grupo}` : `${grupo === hoy ? '📅 Hoy — ' : ''}${fmtDate(grupo)}`;
     html += `<div class="day-group">
-      <div class="day-header"><span>${dia === hoy ? '📅 Hoy — ' : ''}${fmtDate(dia)}</span>
+      <div class="day-header"><span>${titulo}</span>
       <span class="day-count">${regs.length} registro${regs.length!==1?'s':''}</span></div>`;
     regs.forEach((r, i) => {
       const chipClass = r.syncStatus === 'synced' ? 'chip-synced' : r.syncStatus === 'error' ? 'chip-error' : 'chip-pending';
@@ -1431,17 +1458,31 @@ async function buildSheetExcelJS(wb, sheetName, registros) {
   return ws;
 }
 
-async function exportarDiaExcelJS(dia) {
+// Convierte un nombre de transformador en un nombre de hoja Excel válido (máx 31 chars, sin caracteres especiales)
+function sanitizeSheetName(nombre, usados) {
+  let limpio = String(nombre).replace(/[\\/*?:\[\]]/g, '_').trim().substring(0, 31) || 'SIN_TRANSFORMADOR';
+  let final = limpio;
+  let n = 2;
+  while (usados.has(final)) {
+    const sufijo = '_' + n;
+    final = limpio.substring(0, 31 - sufijo.length) + sufijo;
+    n++;
+  }
+  usados.add(final);
+  return final;
+}
+
+async function exportarTransformadorExcelJS(transformador) {
   await loadExcelJS();
-  const db = getDB().filter(r => r.fecha === dia);
+  const db = getDB().filter(r => (r.transformador || 'SIN_TRANSFORMADOR') === transformador);
   if (!db.length) return;
   showToast('⏳ Generando Excel con fotos...', 'warn');
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Luminarias App';
   wb.created = new Date();
-  await buildSheetExcelJS(wb, dia.replace(/-/g,'_'), db);
+  await buildSheetExcelJS(wb, sanitizeSheetName(transformador, new Set()), db);
   const buf = await wb.xlsx.writeBuffer();
-  descargarBuffer(buf, `Luminarias_${dia}.xlsx`);
+  descargarBuffer(buf, `Luminarias_${transformador}.xlsx`);
 }
 
 async function exportarTodoExcelJS() {
@@ -1450,9 +1491,13 @@ async function exportarTodoExcelJS() {
   if (!db.length) return;
   showToast('⏳ Generando Excel completo con fotos...', 'warn');
 
-  const byDay = {};
-  db.forEach(r => { if (!byDay[r.fecha]) byDay[r.fecha] = []; byDay[r.fecha].push(r); });
-  const dias = Object.keys(byDay).sort();
+  const byTransformador = {};
+  db.forEach(r => {
+    const key = r.transformador || 'SIN_TRANSFORMADOR';
+    if (!byTransformador[key]) byTransformador[key] = [];
+    byTransformador[key].push(r);
+  });
+  const transformadores = Object.keys(byTransformador).sort((a,b) => a.localeCompare(b, 'es', {numeric:true}));
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Luminarias App';
@@ -1460,25 +1505,29 @@ async function exportarTodoExcelJS() {
 
   // Hoja resumen
   const wsRes = wb.addWorksheet('RESUMEN');
-  wsRes.addRow(['Fecha','Día','Registros','En OneDrive','Pendientes','Técnicos']);
+  wsRes.addRow(['Transformador','Registros','En OneDrive','Pendientes','Técnicos','Rango de Fechas']);
   const hRes = wsRes.getRow(1);
   hRes.eachCell(c => {
     c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1f2e' } };
   });
-  dias.forEach(d => {
+  transformadores.forEach(t => {
+    const fechas = byTransformador[t].map(r => r.fecha).sort();
+    const rango = fechas.length ? (fechas[0] === fechas[fechas.length-1] ? fmtDate(fechas[0]) : `${fmtDate(fechas[0])} – ${fmtDate(fechas[fechas.length-1])}`) : '';
     wsRes.addRow([
-      d, fmtDate(d), byDay[d].length,
-      byDay[d].filter(r=>r.syncStatus==='synced').length,
-      byDay[d].filter(r=>r.syncStatus!=='synced').length,
-      [...new Set(byDay[d].map(r=>r.usuario))].join(', ')
+      t, byTransformador[t].length,
+      byTransformador[t].filter(r=>r.syncStatus==='synced').length,
+      byTransformador[t].filter(r=>r.syncStatus!=='synced').length,
+      [...new Set(byTransformador[t].map(r=>r.usuario))].join(', '),
+      rango
     ]);
   });
-  [12,20,10,12,10,40].forEach((w,i) => { wsRes.getColumn(i+1).width = w; });
+  [20,12,12,12,40,26].forEach((w,i) => { wsRes.getColumn(i+1).width = w; });
 
-  // Hoja por día
-  for (const dia of dias) {
-    await buildSheetExcelJS(wb, dia.replace(/-/g,'_'), byDay[dia]);
+  // Hoja por transformador
+  const usados = new Set(['RESUMEN']);
+  for (const t of transformadores) {
+    await buildSheetExcelJS(wb, sanitizeSheetName(t, usados), byTransformador[t]);
   }
 
   const buf = await wb.xlsx.writeBuffer();
@@ -1510,13 +1559,14 @@ function renderExportar() {
     return;
   }
 
-  const byDay = {};
-  db.forEach(r => { 
-    if (!byDay[r.fecha]) byDay[r.fecha] = []; 
-    byDay[r.fecha].push(r); 
+  const byTransformador = {};
+  db.forEach(r => {
+    const key = r.transformador || 'SIN_TRANSFORMADOR';
+    if (!byTransformador[key]) byTransformador[key] = [];
+    byTransformador[key].push(r);
   });
 
-  const dias = Object.keys(byDay).sort((a,b) => b.localeCompare(a));
+  const transformadores = Object.keys(byTransformador).sort((a,b) => a.localeCompare(b, 'es', {numeric:true}));
 
   let html = `
     <button class="btn-export-all" onclick="exportarFotosZIP()" style="margin-bottom:16px">
@@ -1526,21 +1576,21 @@ function renderExportar() {
       📦 Exportar TODO — Excel completo con fotos
     </button>
   `;
-  dias.forEach(dia => {
-    const synced = byDay[dia].filter(r => r.syncStatus === 'synced').length;
-    const conFoto = byDay[dia].filter(r => r.foto).length;
+  transformadores.forEach(t => {
+    const synced = byTransformador[t].filter(r => r.syncStatus === 'synced').length;
+    const conFoto = byTransformador[t].filter(r => r.foto).length;
     html += `
       <div class="export-card">
         <div class="export-day-title">
-          📅 ${fmtDate(dia)}
+          🔌 ${t}
         </div>
 
         <div class="export-day-sub">
-          ${byDay[dia].length} registros · ☁️ ${synced} en OneDrive · 📷 ${conFoto} con foto
+          ${byTransformador[t].length} registros · ☁️ ${synced} en OneDrive · 📷 ${conFoto} con foto
         </div>
 
-        <button class="btn-export" onclick="exportarDiaExcelJS('${dia}')">
-          ⬇️ Descargar Excel con fotos — ${fmtDate(dia)}
+        <button class="btn-export" onclick="exportarTransformadorExcelJS('${t.replace(/'/g, "\\'")}')">
+          ⬇️ Descargar Excel con fotos — ${t}
         </button>
       </div>
     `;
