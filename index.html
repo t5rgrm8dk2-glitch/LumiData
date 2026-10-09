@@ -31,6 +31,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <!-- Agregar aquí JSZip -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/piexifjs/1.0.6/piexif.js"></script>
 
 <!-- Agregar aquí FileSaver -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
@@ -93,6 +94,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
   .section { display: none; padding: 16px; }
   .section.active { display: block; }
+  #tab-mapa.active { display: flex; }
 
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-bottom: 14px; }
   .card-title { font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 14px; }
@@ -469,7 +471,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </div>
 
 <!-- TAB MAPA -->
-<div class="section" id="tab-mapa" style="padding:0;display:flex;flex-direction:column;height:calc(100vh - 110px)">
+<div class="section" id="tab-mapa" style="padding:0;flex-direction:column;height:calc(100vh - 110px)">
   <div style="display:flex;gap:8px;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;align-items:center;flex-wrap:wrap">
     <span style="font-size:13px;color:var(--text2);flex:1">Luminarias registradas con GPS</span>
     <button onclick="centrarMapa()" style="background:var(--accent);color:#000;border:none;border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer">📍 Centrar</button>
@@ -1649,6 +1651,48 @@ async function exportarTodo() {
 }
  
 // ---- EXPORTAR FOTOS ZIP ----
+function coordenadaExif(valor) {
+  const absoluto = Math.abs(Number(valor));
+  const grados = Math.floor(absoluto);
+  const minutosCompletos = (absoluto - grados) * 60;
+  const minutos = Math.floor(minutosCompletos);
+  const segundos = Math.round((minutosCompletos - minutos) * 1000000);
+  return [[grados, 1], [minutos, 1], [segundos, 1000000]];
+}
+
+function agregarMetadatosExif(foto, metadata) {
+  if (typeof piexif === 'undefined' || !/^data:image\/jpe?g;base64,/i.test(foto)) return foto;
+  if (metadata.latitud == null || metadata.longitud == null || String(metadata.latitud).trim() === '' || String(metadata.longitud).trim() === '') return foto;
+
+  const lat = Number(metadata.latitud);
+  const lng = Number(metadata.longitud);
+  if (!Number.isFinite(lat) || Math.abs(lat) > 90 || !Number.isFinite(lng) || Math.abs(lng) > 180) return foto;
+
+  try {
+    const exif = piexif.load(foto);
+    exif['GPS'] = exif['GPS'] || {};
+    exif['GPS'][piexif.GPSIFD.GPSVersionID] = [2, 3, 0, 0];
+    exif['GPS'][piexif.GPSIFD.GPSLatitudeRef] = lat < 0 ? 'S' : 'N';
+    exif['GPS'][piexif.GPSIFD.GPSLatitude] = coordenadaExif(lat);
+    exif['GPS'][piexif.GPSIFD.GPSLongitudeRef] = lng < 0 ? 'W' : 'E';
+    exif['GPS'][piexif.GPSIFD.GPSLongitude] = coordenadaExif(lng);
+
+    const descripcion = JSON.stringify(metadata).replace(/[^\x00-\x7F]/g, caracter =>
+      '\\u' + caracter.charCodeAt(0).toString(16).padStart(4, '0')
+    );
+    const etiqueta = `LUMIDATA:${descripcion}`;
+    const descripcionAnterior = exif['0th'][piexif.ImageIFD.ImageDescription];
+    exif['0th'][piexif.ImageIFD.ImageDescription] = descripcionAnterior
+      ? `${descripcionAnterior}\n${etiqueta}`
+      : etiqueta;
+
+    return piexif.insert(piexif.dump(exif), foto);
+  } catch (error) {
+    console.warn('No se pudo incrustar metadata EXIF; se conserva la foto original.', error);
+    return foto;
+  }
+}
+
 async function exportarFotosZIP() {
   const db = getDB();
   const fotos = db.filter(r => r.foto);
@@ -1659,6 +1703,20 @@ async function exportarFotosZIP() {
   const zip = new JSZip();
   let contador = 0;
   fotos.forEach(r => {
+  const metadata = {
+    fecha: r.fecha || '',
+    hora: r.hora || '',
+    transformador: r.transformador || '',
+    potencia: r.potencia || '',
+    sticker: r.sticker || '',
+    tipo: r.tipo || '',
+    estado: r.estado || '',
+    observaciones: r.obs || '',
+    latitud: r.lat || '',
+    longitud: r.lng || '',
+    precisionGps: r.accuracy || '',
+    tecnico: r.usuario || ''
+  };
   const transformador = r.transformador || 'SIN_TRANSFORMADOR';
   const sticker = r.sticker || 'SIN_STICKER';
   // Carpeta por transformador
@@ -1670,12 +1728,16 @@ async function exportarFotosZIP() {
   }
   // Nombre del archivo
   const nombreArchivo = `Sticker-${sticker}.${extension}`;
-  // Quitar encabezado Base64
-  const base64 = r.foto.split(',')[1];
+  const fotoExportada = agregarMetadatosExif(r.foto, metadata);
+  const base64 = fotoExportada.split(',')[1];
   zip.file(
     carpeta + nombreArchivo,
     base64,
     { base64: true }
+  );
+  zip.file(
+    carpeta + `${nombreArchivo}.metadata.json`,
+    JSON.stringify(metadata, null, 2)
   );
   contador++;
 });
