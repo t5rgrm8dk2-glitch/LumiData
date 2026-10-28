@@ -193,6 +193,24 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .empty { text-align: center; padding: 48px 20px; color: var(--text2); }
   .empty-icon { font-size: 48px; margin-bottom: 12px; }
   .divider { height: 1px; background: var(--border); margin: 16px 0; }
+  .mapa-controles { display:flex;gap:8px;padding:10px 12px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;align-items:center;flex-wrap:wrap; }
+  .mapa-controles button,.mapa-controles select { min-height:36px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600; }
+  .mapa-controles button { cursor:pointer; }
+  .mapa-controles .mapa-primary { background:var(--accent);color:#000;border-color:var(--accent); }
+  .mapa-conjuntos { display:flex;gap:6px;padding:6px 12px;background:var(--surface);overflow-x:auto;flex-shrink:0;max-height:76px; }
+  .mapa-conjunto { display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--border);border-radius:8px;white-space:nowrap;font-size:12px;max-width:260px; }
+  .mapa-conjunto-nombre { overflow:hidden;text-overflow:ellipsis;max-width:140px; }
+  .mapa-conjunto button { background:transparent;color:var(--text2);border:0;padding:2px 4px;cursor:pointer;font-size:15px; }
+  .mapa-leyenda { display:flex;gap:12px;justify-content:center;flex-wrap:wrap;padding:6px 10px;background:var(--surface);font-size:11px;color:var(--text2); }
+  .mapa-gps-status { padding:5px 10px;background:var(--surface);font-size:12px;color:var(--text2);text-align:center; }
+  .mapa-errores { display:none;padding:6px 12px;background:var(--surface);color:var(--danger);font-size:12px;max-height:70px;overflow:auto; }
+  @media(max-width:600px) {
+    .mapa-controles { gap:6px;padding:8px; }
+    .mapa-controles button,.mapa-controles select { flex:1 1 auto;padding:6px;font-size:12px; }
+    .mapa-controles .mapa-filtro { flex:1 1 45%; }
+    .mapa-conjuntos { max-height:66px; }
+    .mapa-leyenda { gap:8px;font-size:10px; }
+  }
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -472,19 +490,42 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
 <!-- TAB MAPA -->
 <div class="section" id="tab-mapa" style="padding:0;flex-direction:column;height:calc(100vh - 110px)">
-  <div style="display:flex;gap:8px;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;align-items:center;flex-wrap:wrap">
-    <span style="font-size:13px;color:var(--text2);flex:1">Luminarias registradas con GPS</span>
-    <button onclick="centrarMapa()" style="background:var(--accent);color:#000;border:none;border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer">📍 Centrar</button>
-    <select id="mapaFiltroEstado" onchange="actualizarMapa()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:13px">
+  <div class="mapa-controles">
+    <input id="mapaJsonInput" type="file" accept=".json,.kmz,application/json,application/vnd.google-earth.kmz" multiple onchange="importarArchivosMapa(event)" style="display:none">
+    <button class="mapa-primary" onclick="document.getElementById('mapaJsonInput').click()">Cargar JSON/KMZ</button>
+    <button onclick="centrarMapa()">Ver elementos</button>
+    <select id="mapaProveedor" aria-label="Proveedor cartográfico" onchange="cambiarProveedorMapa()">
+      <option value="esri">Calles · Esri</option>
+      <option value="osm">OpenStreetMap</option>
+      <option value="satellite">Satélite · Esri</option>
+      <option value="topo">Topográfico · OpenTopoMap</option>
+    </select>
+    <button class="mapa-primary" id="btnMiUbicacion" onclick="iniciarSeguimientoGPS()">📍 Mi ubicación</button>
+    <button id="btnDetenerGPS" onclick="detenerSeguimientoGPS()" disabled>Detener GPS</button>
+    <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2)">
+      <input id="mapaSeguirGPS" type="checkbox" checked> Seguir posición
+    </label>
+    <select id="mapaFiltroTransformador" class="mapa-filtro" aria-label="Filtrar por transformador" onchange="actualizarMapa()">
+      <option value="">Todos los transformadores</option>
+    </select>
+    <select id="mapaFiltroEstado" class="mapa-filtro" onchange="actualizarMapa()" aria-label="Filtrar por estado">
       <option value="">Todos los estados</option>
       <option value="Bueno">✅ Bueno</option>
       <option value="Regular">⚠️ Regular</option>
       <option value="Malo">❌ Malo</option>
     </select>
   </div>
+  <div id="mapaConjuntos" class="mapa-conjuntos" aria-label="Topologías importadas"></div>
+  <div class="mapa-leyenda">
+    <span>🟣 Mi ubicación (radio 3 m)</span><span>Violeta claro: precisión estimada</span><span>🟢 Bueno</span><span>🟠 Regular</span><span>🔴 Malo</span>
+    <span id="mapaLeyendaTopologias">Topologías: color por conjunto</span>
+  </div>
+  <div id="mapaAvisoProveedor" class="mapa-errores" role="status" aria-live="polite"></div>
   <div id="mapaContainer" style="flex:1;width:100%;"></div>
+  <div id="mapaGpsEstado" class="mapa-gps-status" aria-live="polite">Ubicación desactivada. La posición se procesa solo en este dispositivo.</div>
+  <div id="mapaErroresJson" class="mapa-errores" role="status" aria-live="polite"></div>
   <div id="mapaInfo" style="padding:8px 16px;background:var(--surface);border-top:1px solid var(--border);font-size:12px;color:var(--text2);flex-shrink:0;text-align:center">
-    Cargando mapa...
+    Carga uno o más archivos JSON o KMZ para ver topologías.
   </div>
 </div>
 
@@ -499,7 +540,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </div>
 
 <div class="toast" id="toast"></div>
-<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:var(--text2);opacity:0.45;z-index:50;pointer-events:none;user-select:none">V 1.2.</div>
+<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:var(--text2);opacity:0.45;z-index:50;pointer-events:none;user-select:none">V 1.3.</div>
 
 <script>
 const DB_KEY = 'luminarias_db_v2';
@@ -589,139 +630,918 @@ function switchTab(name) {
   if (name === 'mapa') iniciarMapa();
 }
 
-// ---- MAPA OPENSTREETMAP (Leaflet.js) ----
+// ---- MAPA Y TOPOLOGÍAS (Leaflet.js) ----
 let mapaObj = null;
 let mapaMarkers = [];
-let mapaTileLayers = null;
+let mapaTileLayers = {};
+let mapaCapasControl = null;
+let mapaDatasets = [];
+let mapaDatasetId = 0;
+let mapaProveedorActivo = null;
+let gpsWatchId = null;
+let gpsMarcador = null;
+let gpsPrecision = null;
+let gpsRadio3m = null;
+let gpsUltimaPosicion = null;
+const mapaColoresTopologia = ['#7c3aed', '#db2777', '#0891b2', '#65a30d', '#ea580c', '#4f46e5', '#0f766e'];
 
 function iniciarMapa() {
-  const db = getDB().filter(r => r.lat && r.lng);
-  const info = document.getElementById('mapaInfo');
-  const cont = document.getElementById('mapaContainer');
-
-  if (!db.length) {
-    cont.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:12px;color:var(--text2)">
-      <div style="font-size:48px">📍</div>
-      <p style="font-size:14px">No hay registros con coordenadas GPS aún.</p>
-    </div>`;
-    info.textContent = 'Sin datos con GPS';
-    return;
-  }
-
-  // Si el mapa se había limpiado (innerHTML sobrescrito porque no había datos), aseguramos el contenedor
-  if (!mapaObj && !document.getElementById('mapaContainer').querySelector('.leaflet-container')) {
-    cont.innerHTML = '';
-  }
-
+  const registros = registrosMapaFiltrados();
+  const primerElemento = mapaDatasets.find(d => d.centro)?.centro;
+  const centro = registros.length
+    ? [Number(registros[0].lat), Number(registros[0].lng)]
+    : primerElemento || [4.5709, -74.2973];
+  if (!mapaObj) crearMapa(centro, registros.length || primerElemento ? 15 : 6);
   _renderMapa();
+  renderizarControlesTopologias();
+  actualizarOpcionesTransformador();
+  if (!mapaObj._lumiBoundsIniciales) {
+    mapaObj._lumiBoundsIniciales = true;
+    centrarMapa();
+  }
+}
+
+function registrosMapaFiltrados() {
+  const estado = document.getElementById('mapaFiltroEstado').value;
+  const transformador = document.getElementById('mapaFiltroTransformador').value;
+  return getDB().filter(r => {
+    if (r.lat == null || r.lng == null || String(r.lat).trim() === '' || String(r.lng).trim() === '') return false;
+    const lat = Number(r.lat), lng = Number(r.lng);
+    return Number.isFinite(lat) && lat >= -90 && lat <= 90 &&
+      Number.isFinite(lng) && lng >= -180 && lng <= 180 &&
+      (!estado || r.estado === estado) &&
+      (!transformador || String(r.transformador || 'SIN TRANSFORMADOR') === transformador);
+  });
 }
 
 function _renderMapa() {
-  const filtro = document.getElementById('mapaFiltroEstado').value;
-  let db = getDB().filter(r => r.lat && r.lng);
-  if (filtro) db = db.filter(r => r.estado === filtro);
-
-  const info = document.getElementById('mapaInfo');
-  const cont = document.getElementById('mapaContainer');
-
-  if (!db.length) {
-    info.textContent = 'No hay registros para el filtro seleccionado';
-    if (mapaObj) { mapaMarkers.forEach(m => mapaObj.removeLayer(m)); mapaMarkers = []; }
-    return;
-  }
-
-  const centro = [parseFloat(db[0].lat), parseFloat(db[0].lng)];
-
-  if (!mapaObj) {
-    cont.style.height = '100%';
-    mapaObj = L.map(cont, {
-      center: centro,
-      zoom: 15,
-      gestureHandling: false
-    });
-
-    // Capas base (varios proveedores de tiles OpenStreetMap)
-    const capaCalle = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-    });
-    const capaSatelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 19,
-      attribution: 'Tiles &copy; Esri'
-    });
-    const capaTopo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-      maxZoom: 17,
-      attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap'
-    });
-
-    capaCalle.addTo(mapaObj);
-    mapaTileLayers = { 'Calles': capaCalle, 'Satélite': capaSatelite, 'Topográfico': capaTopo };
-    L.control.layers(mapaTileLayers).addTo(mapaObj);
-    L.control.scale({ imperial: false }).addTo(mapaObj);
-
-    // Forzar recalculo de tamaño (por si el contenedor estaba oculto al iniciar)
-    setTimeout(() => mapaObj.invalidateSize(), 100);
-  }
-
-  // Borrar marcadores anteriores
+  if (!mapaObj) return;
+  const db = registrosMapaFiltrados();
   mapaMarkers.forEach(m => mapaObj.removeLayer(m));
   mapaMarkers = [];
-
-  const bounds = [];
+  const canvas = L.canvas({ padding: 0.5 });
 
   db.forEach(r => {
-    const lat = parseFloat(r.lat), lng = parseFloat(r.lng);
-    bounds.push([lat, lng]);
-
-    // Color según estado
+    const lat = Number(r.lat), lng = Number(r.lng);
     const color = r.estado === 'Bueno' ? '#22c55e' :
-                  r.estado === 'Regular' ? '#f59e0b' :
-                  r.estado === 'Malo' ? '#ef4444' : '#3b82f6';
-
+      r.estado === 'Regular' ? '#f59e0b' :
+      r.estado === 'Malo' ? '#ef4444' : '#3b82f6';
     const marker = L.circleMarker([lat, lng], {
-      radius: 10,
-      color: '#ffffff',
-      weight: 2,
-      fillColor: color,
-      fillOpacity: 0.9
+      renderer: canvas, radius: 9, color: '#ffffff', weight: 2,
+      fillColor: color, fillOpacity: 0.95
     }).addTo(mapaObj);
-
-    const fotoHtml = r.foto
+    const safeFoto = typeof r.foto === 'string' && /^data:image\/(?:png|jpe?g|webp);base64,/i.test(r.foto)
       ? `<img src="${r.foto}" style="width:100%;max-height:120px;object-fit:cover;border-radius:6px;margin-top:8px">`
       : '';
     marker.bindPopup(`
       <div style="font-family:sans-serif;min-width:180px;color:#111">
-        <div style="font-weight:700;font-size:14px;margin-bottom:4px">🏷 ${r.sticker}</div>
-        <div style="font-size:12px;color:#555">🔌 ${r.transformador} · ⚡${r.potencia}W</div>
-        <div style="font-size:12px;color:#555">💡 ${r.tipo||'-'} · ${r.estado||'-'}</div>
-        <div style="font-size:12px;color:#555">📅 ${r.fecha} ${r.hora}</div>
-        <div style="font-size:12px;color:#555">👤 ${r.usuario}</div>
-        ${r.obs ? `<div style="font-size:12px;color:#555;margin-top:4px">📝 ${r.obs}</div>` : ''}
-        ${fotoHtml}
-        <a href="https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=18/${lat}/${lng}" target="_blank"
-           style="display:block;margin-top:8px;font-size:12px;color:#1a73e8;text-decoration:none">
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px">🏷 ${escaparHtmlMapa(r.sticker || 'Sin sticker')}</div>
+        <div style="font-size:12px;color:#555">🔌 ${escaparHtmlMapa(r.transformador || 'Sin transformador')} · ⚡${escaparHtmlMapa(r.potencia || '-')}W</div>
+        <div style="font-size:12px;color:#555">💡 ${escaparHtmlMapa(r.tipo || '-')} · ${escaparHtmlMapa(r.estado || '-')}</div>
+        <div style="font-size:12px;color:#555">📅 ${escaparHtmlMapa(r.fecha || '')} ${escaparHtmlMapa(r.hora || '')}</div>
+        <div style="font-size:12px;color:#555">👤 ${escaparHtmlMapa(r.usuario || '')}</div>
+        ${r.obs ? `<div style="font-size:12px;color:#555;margin-top:4px">📝 ${escaparHtmlMapa(r.obs)}</div>` : ''}
+        ${safeFoto}
+        <button type="button" onclick="centrarEnCoordenadas(${lat},${lng},17)"
+          style="display:block;margin-top:8px;font-size:12px;color:#1a73e8;background:none;border:0;padding:0;cursor:pointer">
+          🎯 Centrar en esta luminaria
+        </button>
+        <a href="https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=18/${lat}/${lng}" target="_blank" rel="noopener noreferrer"
+          style="display:block;margin-top:6px;font-size:12px;color:#1a73e8;text-decoration:none">
           📍 Ver en OpenStreetMap
         </a>
       </div>
     `);
-
     mapaMarkers.push(marker);
   });
 
-  mapaObj.fitBounds(bounds, { padding: [30, 30] });
-  if (db.length === 1) mapaObj.setZoom(17);
-  info.textContent = `${db.length} luminaria${db.length !== 1 ? 's' : ''} mostrada${db.length !== 1 ? 's' : ''} · Toca un punto para ver detalles`;
+  actualizarVisibilidadTopologias();
+  const topologiasVisibles = mapaDatasets.filter(d => d.visibleEnFiltro && d.visible).length;
+  document.getElementById('mapaInfo').textContent =
+    `${db.length} luminaria${db.length !== 1 ? 's' : ''} · ${topologiasVisibles} conjunto${topologiasVisibles !== 1 ? 's' : ''} de topología visible${topologiasVisibles !== 1 ? 's' : ''}`;
+}
+
+function crearMapa(centro, zoom) {
+  const cont = document.getElementById('mapaContainer');
+  cont.innerHTML = '';
+  mapaObj = L.map(cont, { center: centro, zoom, gestureHandling: false, preferCanvas: true });
+
+  const opcionesTeselas = { maxZoom: 19, maxNativeZoom: 19, keepBuffer: 1, updateWhenIdle: true, updateWhenZooming: false };
+  mapaTileLayers = {
+    esri: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+      ...opcionesTeselas,
+      attribution: 'Tiles &copy; Esri — <a href="https://www.esri.com/en-us/legal/terms/full-master-agreement">Términos de Esri</a>'
+    }),
+    osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      ...opcionesTeselas,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+    }),
+    satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      ...opcionesTeselas,
+      attribution: 'Tiles &copy; Esri — <a href="https://www.esri.com/en-us/legal/terms/full-master-agreement">Términos de Esri</a>'
+    }),
+    topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+      ...opcionesTeselas, maxZoom: 17, maxNativeZoom: 17, subdomains: 'abc',
+      attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a>'
+    })
+  };
+  ['osm', 'topo'].forEach(proveedor => {
+    mapaTileLayers[proveedor].on('tileerror', () => {
+      const aviso = document.getElementById('mapaAvisoProveedor');
+      aviso.textContent = `No fue posible cargar teselas de ${proveedor === 'osm' ? 'OpenStreetMap' : 'OpenTopoMap'}. Revisa la conexión y las condiciones del proveedor o selecciona Calles · Esri. No se realizan reintentos masivos.`;
+      aviso.style.display = 'block';
+    });
+  });
+  mapaProveedorActivo = document.getElementById('mapaProveedor').value || 'esri';
+  mapaTileLayers[mapaProveedorActivo].addTo(mapaObj);
+  mapaCapasControl = L.control.layers({
+    'Calles · Esri': mapaTileLayers.esri,
+    'OpenStreetMap': mapaTileLayers.osm,
+    'Satélite · Esri': mapaTileLayers.satellite,
+    'Topográfico · OpenTopoMap': mapaTileLayers.topo
+  }).addTo(mapaObj);
+  mapaObj.on('baselayerchange', evento => {
+    const proveedor = Object.keys(mapaTileLayers).find(k => mapaTileLayers[k] === evento.layer);
+    if (proveedor) {
+      mapaProveedorActivo = proveedor;
+      document.getElementById('mapaProveedor').value = proveedor;
+    }
+  });
+  L.control.scale({ imperial: false }).addTo(mapaObj);
+  setTimeout(() => { if (mapaObj) mapaObj.invalidateSize(); }, 100);
+}
+
+function cambiarProveedorMapa() {
+  if (!mapaObj) { iniciarMapa(); return; }
+  const proveedor = document.getElementById('mapaProveedor').value;
+  if (!mapaTileLayers[proveedor] || proveedor === mapaProveedorActivo) return;
+  mapaObj.removeLayer(mapaTileLayers[mapaProveedorActivo]);
+  mapaTileLayers[proveedor].addTo(mapaObj);
+  mapaProveedorActivo = proveedor;
+}
+
+function renderizarControlesTopologias() {
+  const cont = document.getElementById('mapaConjuntos');
+  cont.replaceChildren();
+  mapaDatasets.forEach(dataset => {
+    const fila = document.createElement('div');
+    fila.className = 'mapa-conjunto';
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.checked = dataset.visible;
+    check.setAttribute('aria-label', `Mostrar ${dataset.nombre}`);
+    check.addEventListener('change', () => {
+      dataset.visible = check.checked;
+      actualizarVisibilidadTopologias();
+      actualizarResumenMapa();
+    });
+    const muestra = document.createElement('span');
+    muestra.style.cssText = `width:10px;height:10px;border-radius:50%;background:${dataset.color};flex:none`;
+    const nombre = document.createElement('span');
+    nombre.className = 'mapa-conjunto-nombre';
+    nombre.title = `${dataset.nombre} · ${dataset.elementos} elementos${dataset.transformador ? ` · Transformador ${dataset.transformador}` : ''}`;
+    nombre.textContent = `${dataset.nombre} (${dataset.elementos})`;
+    const centrar = document.createElement('button');
+    centrar.type = 'button';
+    centrar.textContent = '◎';
+    centrar.title = `Centrar en ${dataset.nombre}`;
+    centrar.setAttribute('aria-label', `Centrar en ${dataset.nombre}`);
+    centrar.addEventListener('click', () => {
+      if (dataset.layer.getLayers().length) mapaObj.fitBounds(dataset.layer.getBounds(), { padding: [30, 30] });
+    });
+    const quitar = document.createElement('button');
+    quitar.type = 'button';
+    quitar.textContent = '×';
+    quitar.title = `Retirar ${dataset.nombre}`;
+    quitar.setAttribute('aria-label', `Retirar ${dataset.nombre}`);
+    quitar.addEventListener('click', () => retirarTopologia(dataset.id));
+    fila.append(check, muestra, nombre, centrar, quitar);
+    cont.appendChild(fila);
+  });
+  const leyenda = document.getElementById('mapaLeyendaTopologias');
+  leyenda.textContent = mapaDatasets.length ? 'Topologías: ver color de cada conjunto' : 'Topologías: sin archivos cargados';
+}
+
+function actualizarOpcionesTransformador() {
+  const select = document.getElementById('mapaFiltroTransformador');
+  const seleccionado = select.value;
+  const nombres = new Set();
+  getDB().forEach(r => { if (r.transformador) nombres.add(String(r.transformador)); });
+  mapaDatasets.forEach(d => { if (d.transformador) nombres.add(String(d.transformador)); });
+  select.replaceChildren(new Option('Todos los transformadores', ''));
+  [...nombres].sort((a, b) => a.localeCompare(b, 'es', { numeric: true })).forEach(nombre => {
+    select.add(new Option(nombre, nombre));
+  });
+  if ([...select.options].some(o => o.value === seleccionado)) select.value = seleccionado;
+}
+
+function actualizarVisibilidadTopologias() {
+  const transformador = document.getElementById('mapaFiltroTransformador').value;
+  mapaDatasets.forEach(dataset => {
+    dataset.visibleEnFiltro = !transformador || dataset.transformador === transformador;
+    const debeMostrar = dataset.visible && dataset.visibleEnFiltro;
+    const estaMostrada = mapaObj.hasLayer(dataset.layer);
+    if (debeMostrar && !estaMostrada) dataset.layer.addTo(mapaObj);
+    else if (!debeMostrar && estaMostrada) mapaObj.removeLayer(dataset.layer);
+  });
+}
+
+function retirarTopologia(id) {
+  const indice = mapaDatasets.findIndex(d => d.id === id);
+  if (indice < 0) return;
+  mapaObj.removeLayer(mapaDatasets[indice].layer);
+  mapaDatasets.splice(indice, 1);
+  renderizarControlesTopologias();
+  actualizarOpcionesTransformador();
+  _renderMapa();
+}
+
+function actualizarResumenMapa() {
+  const db = registrosMapaFiltrados();
+  const visibles = mapaDatasets.filter(d => d.visible && d.visibleEnFiltro).length;
+  document.getElementById('mapaInfo').textContent =
+    `${db.length} luminaria${db.length !== 1 ? 's' : ''} · ${visibles} conjunto${visibles !== 1 ? 's' : ''} de topología visible${visibles !== 1 ? 's' : ''}`;
+}
+
+function validarJsonRed(contenido) {
+  if (!contenido || typeof contenido !== 'object' || Array.isArray(contenido)) {
+    throw new Error('La raíz del JSON debe ser un objeto.');
+  }
+  if (contenido.formato !== 'graficador_red_bt' || contenido.version !== 1) {
+    throw new Error('Formato incompatible: se requiere graficador_red_bt, versión 1.');
+  }
+  if (!Array.isArray(contenido.elementos)) {
+    throw new Error('El campo "elementos" debe ser una lista.');
+  }
+  if (!Number.isInteger(contenido.cantidad_elementos) || contenido.cantidad_elementos !== contenido.elementos.length) {
+    throw new Error('"cantidad_elementos" no coincide con la lista de elementos.');
+  }
+  if (!['fisico', 'electrico', 'plano', 'plan'].includes(contenido.tipo_plano)) {
+    throw new Error('El campo "tipo_plano" debe ser fisico, electrico o plano.');
+  }
+  if (contenido.transformador != null &&
+      typeof contenido.transformador !== 'string' && typeof contenido.transformador !== 'number') {
+    throw new Error('El código del transformador debe ser texto, número o nulo.');
+  }
+
+  const validarPunto = (valor, campo, indice, minimo, maximo) => {
+    if (typeof valor !== 'number' || !Number.isFinite(valor) || valor < minimo || valor > maximo) {
+      throw new Error(`Elemento ${indice}: "${campo}" debe ser una coordenada geográfica válida (${minimo} a ${maximo}).`);
+    }
+  };
+
+  contenido.elementos.forEach((elemento, posicion) => {
+    const indice = posicion + 1;
+    if (!elemento || typeof elemento !== 'object' || Array.isArray(elemento)) {
+      throw new Error(`Elemento ${indice}: debe ser un objeto.`);
+    }
+    if (typeof elemento.tipo !== 'string' || !elemento.tipo.trim()) {
+      throw new Error(`Elemento ${indice}: falta un tipo de elemento válido.`);
+    }
+    validarPunto(elemento.x1, 'x1 (longitud)', indice, -180, 180);
+    validarPunto(elemento.y1, 'y1 (latitud)', indice, -90, 90);
+
+    const esLinea = elemento.tipo.trim().toLowerCase() === 'linea';
+    const tieneX2 = elemento.x2 !== undefined && elemento.x2 !== null;
+    const tieneY2 = elemento.y2 !== undefined && elemento.y2 !== null;
+    if (esLinea && (!tieneX2 || !tieneY2)) {
+      throw new Error(`Elemento ${indice}: la línea requiere x2 e y2.`);
+    }
+    if (tieneX2 !== tieneY2) {
+      throw new Error(`Elemento ${indice}: x2 e y2 deben informarse juntos.`);
+    }
+    if (tieneX2) {
+      validarPunto(elemento.x2, 'x2 (longitud)', indice, -180, 180);
+      validarPunto(elemento.y2, 'y2 (latitud)', indice, -90, 90);
+    }
+    if (elemento.etiqueta != null && typeof elemento.etiqueta !== 'string' && typeof elemento.etiqueta !== 'number') {
+      throw new Error(`Elemento ${indice}: la etiqueta debe ser texto, número o nula.`);
+    }
+  });
+
+  return contenido;
+}
+
+function escaparHtmlMapa(valor) {
+  return String(valor).replace(/[&<>"']/g, caracter => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[caracter]);
+}
+
+async function copiarTextoNodo(valor, boton) {
+  const texto = String(valor || '').trim();
+  if (!texto) {
+    showToast('Este poste no tiene un código para copiar', 'warn');
+    return;
+  }
+  try {
+    let copiado = false;
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(texto);
+        copiado = true;
+      } catch (error) {
+        console.warn('La API Clipboard no pudo copiar el código; se probará el método alternativo.', error);
+      }
+    }
+    if (!copiado) {
+      const auxiliar = document.createElement('textarea');
+      auxiliar.value = texto;
+      auxiliar.setAttribute('readonly', '');
+      auxiliar.style.position = 'fixed';
+      auxiliar.style.opacity = '0';
+      document.body.appendChild(auxiliar);
+      try {
+        auxiliar.select();
+        copiado = document.execCommand('copy');
+      } finally {
+        auxiliar.remove();
+      }
+      if (!copiado) throw new Error('El navegador no permitió copiar al portapapeles.');
+    }
+    if (boton) {
+      boton.textContent = 'Copiado ✓';
+      boton.disabled = true;
+    }
+    showToast(`Código ${texto} copiado. Pégalo en Observaciones.`, 'success');
+  } catch (error) {
+    showToast(error.message || 'No se pudo copiar. Selecciona el código manualmente.', 'error');
+  }
+}
+
+function crearCapaJson(contenido, colorConjunto) {
+  const capa = L.featureGroup();
+  const simbolos = {
+    poste: { texto: 'P', color: '#2563eb' },
+    transformador: { texto: 'T', color: '#dc2626' },
+    caja_subterranea: { texto: 'C', color: '#7c3aed' },
+    luminaria: { texto: 'L', color: '#d97706' }
+  };
+
+  contenido.elementos.forEach(elemento => {
+    const tipo = elemento.tipo.trim().toLowerCase();
+    const etiqueta = elemento.etiqueta == null ? '' : String(elemento.etiqueta).trim();
+    let objeto;
+
+    if (tipo === 'linea') {
+      objeto = L.polyline([[elemento.y1, elemento.x1], [elemento.y2, elemento.x2]], {
+        color: colorConjunto, weight: 4, opacity: 0.9
+      });
+    } else {
+      const simbolo = simbolos[tipo] || { texto: '?', color: '#475569' };
+      const icono = L.divIcon({
+        className: '',
+        html: `<span style="display:flex;width:24px;height:24px;align-items:center;justify-content:center;border:3px solid ${colorConjunto};border-radius:50%;background:${simbolo.color};color:#fff;font-size:11px;font-weight:800;box-shadow:0 1px 5px #0008">${simbolo.texto}</span>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+      });
+      objeto = L.marker([elemento.y1, elemento.x1], { icon: icono });
+    }
+
+    if (etiqueta) objeto.bindTooltip(escaparHtmlMapa(etiqueta), { sticky: true, direction: 'top' });
+    if (tipo === 'poste' && etiqueta) {
+      objeto.bindPopup(`
+        <div style="font:13px sans-serif;color:#111">
+          <strong>Poste ${escaparHtmlMapa(etiqueta)}</strong>
+          <button type="button" data-copiar-nodo style="display:block;margin-top:8px;padding:7px 10px;border:0;border-radius:6px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer">
+            Copiar código para Observaciones
+          </button>
+        </div>
+      `);
+      objeto.on('popupopen', evento => {
+        const boton = evento.popup.getElement().querySelector('[data-copiar-nodo]');
+        if (boton) boton.addEventListener('click', () => copiarTextoNodo(etiqueta, boton), { once: true });
+      });
+    }
+    objeto.addTo(capa);
+  });
+
+  return capa;
+}
+
+function nombreNodoKml(nodo) {
+  return (nodo.localName || nodo.nodeName.split(':').pop()).toLowerCase();
+}
+
+function hijosKml(nodo, nombre) {
+  return Array.from(nodo.children || []).filter(hijo => nombreNodoKml(hijo) === nombre.toLowerCase());
+}
+
+function primerHijoKml(nodo, nombre) {
+  return hijosKml(nodo, nombre)[0] || null;
+}
+
+function descendientesKml(nodo, nombre) {
+  return Array.from(nodo.getElementsByTagName('*')).filter(hijo => nombreNodoKml(hijo) === nombre.toLowerCase());
+}
+
+function colorKml(valor, predeterminado) {
+  const color = String(valor || '').trim();
+  if (!/^[\da-f]{8}$/i.test(color)) return { color: predeterminado, opacity: 1 };
+  return {
+    color: `#${color.slice(6, 8)}${color.slice(4, 6)}${color.slice(2, 4)}`,
+    opacity: parseInt(color.slice(0, 2), 16) / 255
+  };
+}
+
+function estiloKml(nodo) {
+  const resultado = {};
+  const iconStyle = primerHijoKml(nodo, 'IconStyle');
+  const lineStyle = primerHijoKml(nodo, 'LineStyle');
+  const polyStyle = primerHijoKml(nodo, 'PolyStyle');
+  if (iconStyle) {
+    const icon = primerHijoKml(iconStyle, 'Icon');
+    const href = icon && primerHijoKml(icon, 'href');
+    const color = primerHijoKml(iconStyle, 'color');
+    const scale = primerHijoKml(iconStyle, 'scale');
+    resultado.iconHref = href ? href.textContent.trim() : '';
+    resultado.iconScale = scale ? Number(scale.textContent) : 1;
+    if (color) Object.assign(resultado, { iconColor: colorKml(color.textContent, '#475569').color });
+  }
+  if (lineStyle) {
+    const color = primerHijoKml(lineStyle, 'color');
+    const width = primerHijoKml(lineStyle, 'width');
+    Object.assign(resultado, colorKml(color && color.textContent, '#0891b2'));
+    if (width && Number.isFinite(Number(width.textContent))) resultado.weight = Number(width.textContent);
+  }
+  if (polyStyle) {
+    const color = primerHijoKml(polyStyle, 'color');
+    if (color) Object.assign(resultado, colorKml(color.textContent, '#0891b2'));
+    const fill = primerHijoKml(polyStyle, 'fill');
+    const outline = primerHijoKml(polyStyle, 'outline');
+    resultado.fill = !fill || fill.textContent.trim() !== '0';
+    resultado.outline = !outline || outline.textContent.trim() !== '0';
+  }
+  return resultado;
+}
+
+function resolverRutaKmz(rutaKml, href) {
+  if (!href || /^[a-z][a-z\d+.-]*:/i.test(href) || href.startsWith('//')) return null;
+  const base = rutaKml.includes('/') ? rutaKml.slice(0, rutaKml.lastIndexOf('/') + 1) : '';
+  const segmentos = `${base}${href.split('#')[0].split('?')[0]}`.replace(/\\/g, '/').split('/');
+  const ruta = [];
+  segmentos.forEach(segmento => {
+    const parte = decodeURIComponent(segmento);
+    if (!parte || parte === '.') return;
+    if (parte === '..') ruta.pop();
+    else ruta.push(parte);
+  });
+  return ruta.join('/');
+}
+
+function parsearCoordenadasKml(texto, contexto) {
+  const partes = texto.trim().split(/\s+/).filter(Boolean);
+  if (!partes.length) throw new Error(`${contexto}: no hay coordenadas.`);
+  return partes.map(parte => {
+    const valores = parte.split(',').map(Number);
+    const lng = valores[0], lat = valores[1];
+    if (valores.length < 2 || !Number.isFinite(lng) || lng < -180 || lng > 180 ||
+        !Number.isFinite(lat) || lat < -90 || lat > 90) {
+      throw new Error(`${contexto}: hay una coordenada geográfica inválida.`);
+    }
+    return [lat, lng];
+  });
+}
+
+function geometriaKml(nodo, contexto) {
+  const tipo = nombreNodoKml(nodo);
+  if (tipo === 'multigeometry') return Array.from(nodo.children || []).flatMap(hijo => geometriaKml(hijo, contexto));
+  if (tipo === 'point' || tipo === 'linestring') {
+    const coordenadas = primerHijoKml(nodo, 'coordinates');
+    if (!coordenadas) throw new Error(`${contexto}: falta el elemento coordinates.`);
+    const puntos = parsearCoordenadasKml(coordenadas.textContent, contexto);
+    if (tipo === 'point' && puntos.length !== 1) throw new Error(`${contexto}: un punto debe tener una sola coordenada.`);
+    if (tipo === 'linestring' && puntos.length < 2) throw new Error(`${contexto}: una línea requiere al menos dos coordenadas.`);
+    return [{ tipo, puntos }];
+  }
+  if (tipo === 'polygon') {
+    const anillos = descendientesKml(nodo, 'Linearring').map(anillo => {
+      const coordenadas = primerHijoKml(anillo, 'coordinates');
+      if (!coordenadas) throw new Error(`${contexto}: falta coordinates en un anillo.`);
+      const puntos = parsearCoordenadasKml(coordenadas.textContent, contexto);
+      if (puntos.length < 4) throw new Error(`${contexto}: un polígono requiere al menos cuatro coordenadas en cada anillo.`);
+      return puntos;
+    });
+    if (!anillos.length) throw new Error(`${contexto}: el polígono no tiene anillos.`);
+    return [{ tipo, puntos: anillos }];
+  }
+  return [];
+}
+
+function datosExtendidosKml(placemark) {
+  const datos = [];
+  descendientesKml(placemark, 'Data').forEach(elemento => {
+    const nombre = elemento.getAttribute('name');
+    const valor = primerHijoKml(elemento, 'value');
+    if (nombre && valor) datos.push([nombre, valor.textContent.trim()]);
+  });
+  descendientesKml(placemark, 'SimpleData').forEach(elemento => {
+    const nombre = elemento.getAttribute('name');
+    if (nombre) datos.push([nombre, elemento.textContent.trim()]);
+  });
+  return datos;
+}
+
+function carpetasPlacemarkKml(placemark) {
+  const nombres = [];
+  let padre = placemark.parentElement;
+  while (padre) {
+    if (nombreNodoKml(padre) === 'folder') {
+      const nombre = primerHijoKml(padre, 'name');
+      if (nombre && nombre.textContent.trim()) nombres.unshift(nombre.textContent.trim());
+    }
+    padre = padre.parentElement;
+  }
+  return nombres;
+}
+
+async function crearDatasetKmz(archivo) {
+  if (archivo.size > 50 * 1024 * 1024) throw new Error('El KMZ supera el límite de 50 MB.');
+  if (typeof JSZip === 'undefined') throw new Error('No está disponible el lector de archivos KMZ (JSZip). Comprueba la conexión e inténtalo de nuevo.');
+
+  const zip = await JSZip.loadAsync(archivo, { checkCRC32: false, createFolders: false });
+  const entradasKml = Object.keys(zip.files).filter(nombre => !zip.files[nombre].dir && /\.kml$/i.test(nombre));
+  if (!entradasKml.length) throw new Error('El KMZ no contiene ningún archivo KML.');
+  const rutaKml = entradasKml.find(nombre => /(^|\/)doc\.kml$/i.test(nombre)) || entradasKml[0];
+  const entradaKml = zip.file(rutaKml);
+  const tamanoKml = entradaKml && entradaKml._data ? entradaKml._data.uncompressedSize : 0;
+  if (tamanoKml > 20 * 1024 * 1024) throw new Error('El KML interno supera el límite de 20 MB.');
+  const textoKml = await entradaKml.async('string');
+  if (textoKml.length > 20 * 1024 * 1024) throw new Error('El KML interno supera el límite de 20 MB.');
+  if (/<!DOCTYPE|<!ENTITY/i.test(textoKml)) throw new Error('El KML contiene declaraciones XML no permitidas.');
+
+  const documento = new DOMParser().parseFromString(textoKml, 'application/xml');
+  if (!documento.documentElement || nombreNodoKml(documento.documentElement) !== 'kml' ||
+      descendientesKml(documento, 'parsererror').length) {
+    throw new Error('El KMZ contiene un KML con XML inválido.');
+  }
+  const estilos = new Map();
+  descendientesKml(documento, 'Style').forEach(nodo => {
+    const id = nodo.getAttribute('id');
+    if (id) estilos.set(id, estiloKml(nodo));
+  });
+  descendientesKml(documento, 'StyleMap').forEach(nodo => {
+    const normal = descendientesKml(nodo, 'Pair').find(par => {
+      const key = primerHijoKml(par, 'key');
+      return key && key.textContent.trim() === 'normal';
+    });
+    const styleUrl = normal && primerHijoKml(normal, 'styleUrl');
+    const id = nodo.getAttribute('id');
+    if (id && styleUrl) estilos.set(id, { styleRef: styleUrl.textContent.trim().replace(/^#/, '') });
+  });
+  const resolverEstilo = id => {
+    let estilo = estilos.get(String(id || '').replace(/^#/, '')) || {};
+    for (let profundidad = 0; estilo.styleRef && profundidad < 4; profundidad++) {
+      estilo = { ...estilo, ...(estilos.get(estilo.styleRef) || {}), styleRef: '' };
+    }
+    return estilo;
+  };
+
+  const iconos = new Map();
+  const iconosNecesarios = new Set([...estilos.values()].map(estilo => estilo.iconHref).filter(Boolean));
+  const miembrosKmz = new Map(Object.keys(zip.files).map(nombre => [nombre.toLowerCase(), nombre]));
+  for (const href of iconosNecesarios) {
+    const ruta = resolverRutaKmz(rutaKml, href);
+    const miembro = ruta && miembrosKmz.get(ruta.toLowerCase());
+    if (!miembro) continue;
+    const entrada = zip.file(miembro);
+    const tamano = entrada && entrada._data ? entrada._data.uncompressedSize : 0;
+    if (!entrada || tamano > 2 * 1024 * 1024) continue;
+    const extension = miembro.split('.').pop().toLowerCase();
+    const mime = extension === 'png' ? 'image/png' : extension === 'jpg' || extension === 'jpeg' ? 'image/jpeg' :
+      extension === 'gif' ? 'image/gif' : extension === 'webp' ? 'image/webp' : '';
+    if (mime) iconos.set(href, `data:${mime};base64,${await entrada.async('base64')}`);
+  }
+
+  const capa = L.featureGroup();
+  const firmas = new Set();
+  const placemarks = descendientesKml(documento, 'Placemark');
+  if (placemarks.length > 20000) throw new Error('El KMZ supera el límite de 20 000 elementos.');
+  let cantidad = 0;
+  let duplicadosKmz = 0;
+  let noSoportados = 0;
+  let transformador = '';
+  const nombreArchivo = archivo.name.replace(/\.kmz$/i, '');
+  const coincidenciaNombre = nombreArchivo.match(/(?:TRAFO|TRANSFORMADOR)[\s_-]*([A-Z0-9-]+)/i);
+  if (coincidenciaNombre) transformador = coincidenciaNombre[1];
+  let verticesTotales = 0;
+
+  placemarks.forEach((placemark, indice) => {
+    const nombreNodo = primerHijoKml(placemark, 'name');
+    const nombre = nombreNodo ? nombreNodo.textContent.trim() : `Elemento ${indice + 1}`;
+    const contexto = nombre || `Elemento ${indice + 1}`;
+    const carpetas = carpetasPlacemarkKml(placemark);
+    const carpeta = carpetas.join(' / ');
+    const estiloNodo = primerHijoKml(placemark, 'Style');
+    const styleUrl = primerHijoKml(placemark, 'styleUrl');
+    const estilo = {
+      ...(styleUrl ? resolverEstilo(styleUrl.textContent.trim()) : {}),
+      ...(estiloNodo ? estiloKml(estiloNodo) : {})
+    };
+    const propiedades = datosExtendidosKml(placemark);
+    const clavesTrafo = ['CODIGO_TRAFO', 'NRO_TRANSFORMADOR_V', 'NRO_TRANSFORMADOR', 'TRANSFORMADOR'];
+    const valorTrafo = propiedades.find(([clave, valor]) =>
+      clavesTrafo.includes(clave.trim().toUpperCase()) && valor.trim()
+    );
+    if (!transformador && valorTrafo) transformador = valorTrafo[1].trim();
+    if (!transformador && /trafo/i.test(carpeta) && nombre) transformador = nombre;
+
+    const geometries = Array.from(placemark.children || [])
+      .filter(nodo => ['point', 'linestring', 'polygon', 'multigeometry'].includes(nombreNodoKml(nodo)))
+      .flatMap(nodo => geometriaKml(nodo, contexto));
+    if (!geometries.length) { noSoportados++; return; }
+    const label = nombreNodo ? nombre : '';
+    const folderColor = /trafo/i.test(carpeta) ? '#dc2626' : /poste/i.test(carpeta) ? '#2563eb' : '#475569';
+
+    geometries.forEach(geometria => {
+      verticesTotales += geometria.tipo === 'polygon'
+        ? geometria.puntos.reduce((suma, anillo) => suma + anillo.length, 0)
+        : geometria.puntos.length;
+      if (verticesTotales > 200000) throw new Error('El KMZ supera el límite de 200 000 coordenadas.');
+      const firma = JSON.stringify([carpeta, geometria.tipo, geometria.puntos, nombre]);
+      if (firmas.has(firma)) { duplicadosKmz++; return; }
+      firmas.add(firma);
+
+      let objeto;
+      if (geometria.tipo === 'point') {
+        const href = estilo.iconHref;
+        const iconoKmz = href && iconos.get(href);
+        const tamanoIcono = Math.max(20, Math.min(64, Math.round(32 * (Number.isFinite(estilo.iconScale) ? estilo.iconScale : 1))));
+        const inicial = /trafo/i.test(carpeta) ? 'T' : /poste/i.test(carpeta) ? 'P' : '•';
+        const icono = iconoKmz
+          ? L.icon({ iconUrl: iconoKmz, iconSize: [tamanoIcono, tamanoIcono], iconAnchor: [tamanoIcono / 2, tamanoIcono] })
+          : L.divIcon({
+              className: '',
+              html: `<span style="display:flex;width:26px;height:26px;align-items:center;justify-content:center;border:2px solid #fff;border-radius:50%;background:${estilo.iconColor || folderColor};color:#fff;font-size:12px;font-weight:800;box-shadow:0 1px 5px #0008">${inicial}</span>`,
+              iconSize: [26, 26], iconAnchor: [13, 13]
+            });
+        objeto = L.marker(geometria.puntos[0], { icon: icono });
+      } else if (geometria.tipo === 'linestring') {
+        objeto = L.polyline(geometria.puntos, {
+          color: estilo.color || '#0891b2', weight: Math.max(1, Math.min(12, estilo.weight || 4)),
+          opacity: estilo.opacity == null ? 0.9 : estilo.opacity
+        });
+      } else {
+        objeto = L.polygon(geometria.puntos, {
+          color: estilo.outline === false ? 'transparent' : (estilo.color || folderColor),
+          weight: Math.max(1, Math.min(8, estilo.weight || 2)),
+          opacity: estilo.opacity == null ? 0.9 : estilo.opacity,
+          fill: estilo.fill !== false,
+          fillColor: estilo.color || folderColor,
+          fillOpacity: estilo.opacity == null ? 0.25 : estilo.opacity
+        });
+      }
+
+      if (label) objeto.bindTooltip(escaparHtmlMapa(label), { sticky: true, direction: 'top' });
+      const detalle = [
+        `<strong>${escaparHtmlMapa(nombre)}</strong>`,
+        carpeta ? `<div>Carpeta: ${escaparHtmlMapa(carpeta)}</div>` : '',
+        primerHijoKml(placemark, 'description')
+          ? `<div>${escaparHtmlMapa(primerHijoKml(placemark, 'description').textContent.trim())}</div>`
+          : '',
+        ...propiedades.map(([clave, valor]) => `<div>${escaparHtmlMapa(clave)}: ${escaparHtmlMapa(valor)}</div>`)
+      ];
+      if (geometria.tipo === 'point' && carpetas.some(nombreCarpeta => /^POSTES?(?:_|$)/i.test(nombreCarpeta))) {
+        detalle.push(`<button type="button" data-copiar-nodo style="display:block;margin-top:8px;padding:7px 10px;border:0;border-radius:6px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer">Copiar código para Observaciones</button>`);
+        objeto.on('popupopen', evento => {
+          const boton = evento.popup.getElement().querySelector('[data-copiar-nodo]');
+          if (boton) boton.addEventListener('click', () => copiarTextoNodo(nombre, boton), { once: true });
+        });
+      }
+      const popupDetalle = detalle.filter(Boolean).join('');
+      if (popupDetalle) objeto.bindPopup(`<div style="font:12px sans-serif;max-height:220px;overflow:auto">${popupDetalle}</div>`);
+      capa.addLayer(objeto);
+      cantidad++;
+    });
+  });
+
+  if (!cantidad) throw new Error(noSoportados
+    ? 'No se encontraron geometrías KML compatibles (puntos, líneas o polígonos).'
+    : 'El archivo KML no contiene elementos geográficos.');
+  const bounds = capa.getBounds();
+  const centro = bounds.isValid() ? [bounds.getCenter().lat, bounds.getCenter().lng] : null;
+  return {
+    id: ++mapaDatasetId,
+    nombre: archivo.name,
+    transformador,
+    elementos: cantidad,
+    duplicados: duplicadosKmz,
+    firma: `kmz:${JSON.stringify([...firmas].sort())}`,
+    contenido: null,
+    centro,
+    color: mapaColoresTopologia[(mapaDatasetId - 1) % mapaColoresTopologia.length],
+    layer: capa,
+    visible: true,
+    visibleEnFiltro: true,
+    advertencia: noSoportados ? `${noSoportados} elemento(s) sin geometría compatible.` : ''
+  };
+}
+
+async function importarArchivosMapa(evento) {
+  const archivos = Array.from(evento.target.files || []);
+  evento.target.value = '';
+  if (!archivos.length) return;
+  if (!mapaObj) iniciarMapa();
+
+  const errores = [];
+  const advertencias = [];
+  let importados = 0;
+  let duplicados = 0;
+  const info = document.getElementById('mapaInfo');
+  info.textContent = `Leyendo ${archivos.length} archivo${archivos.length === 1 ? '' : 's'}...`;
+
+  for (const archivo of archivos) {
+    try {
+      if (/\.kmz$/i.test(archivo.name)) {
+        const dataset = await crearDatasetKmz(archivo);
+        if (mapaDatasets.some(d => d.firma === dataset.firma)) {
+          duplicados++;
+          continue;
+        }
+        mapaDatasets.push(dataset);
+        if (dataset.advertencia) advertencias.push(`${archivo.name}: ${dataset.advertencia}`);
+        importados++;
+        continue;
+      }
+      if (!/\.json$/i.test(archivo.name)) {
+        throw new Error('Extensión no compatible. Selecciona un archivo .json o .kmz.');
+      }
+      const datos = validarJsonRed(JSON.parse(await archivo.text()));
+      const firmas = new Set();
+      let elementosDuplicados = 0;
+      const elementos = datos.elementos.filter(elemento => {
+        const firma = JSON.stringify([
+          elemento.tipo.trim().toLowerCase(), elemento.x1, elemento.y1,
+          elemento.x2 ?? null, elemento.y2 ?? null,
+          elemento.etiqueta == null ? null : String(elemento.etiqueta).trim()
+        ]);
+        if (firmas.has(firma)) { elementosDuplicados++; return false; }
+        firmas.add(firma);
+        return true;
+      });
+      const transformador = datos.transformador == null ? '' : String(datos.transformador);
+      const firmaDataset = JSON.stringify([
+        datos.formato, datos.version, datos.tipo_plano, transformador,
+        [...firmas].sort()
+      ]);
+      if (mapaDatasets.some(d => d.firma === firmaDataset)) {
+        duplicados++;
+        continue;
+      }
+
+      const contenido = { ...datos, transformador, elementos: elementos.slice() };
+      const color = mapaColoresTopologia[mapaDatasetId % mapaColoresTopologia.length];
+      const layer = crearCapaJson(contenido, color);
+      const dataset = {
+        id: ++mapaDatasetId,
+        nombre: archivo.name,
+        transformador,
+        elementos: elementos.length,
+        duplicados: elementosDuplicados,
+        firma: firmaDataset,
+        contenido,
+        centro: layer.getBounds().isValid()
+          ? [layer.getBounds().getCenter().lat, layer.getBounds().getCenter().lng]
+          : null,
+        color,
+        layer,
+        visible: true,
+        visibleEnFiltro: true
+      };
+      mapaDatasets.push(dataset);
+      importados++;
+    } catch (error) {
+      const mensaje = error instanceof SyntaxError
+        ? 'JSON no válido o incompleto.'
+        : error.message || 'No fue posible leer el archivo.';
+      errores.push(`${archivo.name}: ${mensaje}`);
+    }
+  }
+
+  actualizarOpcionesTransformador();
+  renderizarControlesTopologias();
+  actualizarVisibilidadTopologias();
+  _renderMapa();
+  if (importados) centrarMapa();
+  const resumen = `${importados} conjunto${importados === 1 ? '' : 's'} agregado${importados === 1 ? '' : 's'}` +
+    `${duplicados ? ` · ${duplicados} duplicado${duplicados === 1 ? '' : 's'} omitido${duplicados === 1 ? '' : 's'}` : ''}` +
+    `${errores.length ? ` · ${errores.length} archivo${errores.length === 1 ? '' : 's'} con error` : ''}` +
+    `${advertencias.length ? ` · ${advertencias.length} advertencia${advertencias.length === 1 ? '' : 's'}` : ''}`;
+  info.textContent = `${resumen} · ${mapaDatasets.length} conjunto${mapaDatasets.length === 1 ? '' : 's'} en sesión`;
+  const erroresEl = document.getElementById('mapaErroresJson');
+  erroresEl.textContent = [...errores, ...advertencias].join(' | ');
+  erroresEl.style.display = errores.length || advertencias.length ? 'block' : 'none';
+  if (errores.length) showToast(`${errores.length} archivo${errores.length === 1 ? '' : 's'}: ${errores.length === 1 ? 'no se pudo' : 'no se pudieron'} importar`, 'error');
+  else if (importados) showToast(`${importados} conjunto${importados === 1 ? '' : 's'} importado${importados === 1 ? '' : 's'}`, 'success');
+  else if (duplicados) showToast('Los archivos ya estaban cargados', 'warn');
 }
 
 function actualizarMapa() {
-  if (mapaObj) _renderMapa();
+  if (!mapaObj) { iniciarMapa(); return; }
+  _renderMapa();
+  centrarMapa();
 }
 
 function centrarMapa() {
-  if (!mapaObj || !mapaMarkers.length) return;
-  const bounds = mapaMarkers.map(m => m.getLatLng());
+  if (!mapaObj) return;
+  const bounds = L.latLngBounds(mapaMarkers.map(m => m.getLatLng()));
+  mapaDatasets.filter(d => d.visible && d.visibleEnFiltro && d.layer.getLayers().length)
+    .forEach(d => bounds.extend(d.layer.getBounds()));
+  if (!bounds.isValid()) return;
   mapaObj.fitBounds(bounds, { padding: [30, 30] });
-  if (mapaMarkers.length === 1) mapaObj.setZoom(17);
+  if (mapaMarkers.length === 1 && !mapaDatasets.some(d => d.visible && d.visibleEnFiltro && d.layer.getLayers().length)) mapaObj.setZoom(17);
+}
+
+function centrarEnCoordenadas(lat, lng, zoom = 17) {
+  if (!mapaObj || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+  mapaObj.setView([lat, lng], zoom);
+}
+
+function iniciarSeguimientoGPS() {
+  if (!mapaObj) iniciarMapa();
+  if (!window.isSecureContext) {
+    document.getElementById('mapaGpsEstado').textContent = 'La ubicación requiere HTTPS o un origen local permitido por el navegador.';
+    return;
+  }
+  if (!navigator.geolocation) {
+    document.getElementById('mapaGpsEstado').textContent = 'Este navegador no ofrece geolocalización.';
+    return;
+  }
+  if (gpsWatchId !== null) {
+    if (gpsUltimaPosicion) centrarEnCoordenadas(gpsUltimaPosicion.lat, gpsUltimaPosicion.lng);
+    return;
+  }
+  document.getElementById('mapaGpsEstado').textContent = 'Solicitando permiso de ubicación al navegador...';
+  document.getElementById('btnMiUbicacion').disabled = true;
+  document.getElementById('btnDetenerGPS').disabled = false;
+  try {
+    gpsWatchId = navigator.geolocation.watchPosition(
+      posicion => {
+        const lat = posicion.coords.latitude;
+        const lng = posicion.coords.longitude;
+        const precision = posicion.coords.accuracy;
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(precision)) {
+          document.getElementById('mapaGpsEstado').textContent = 'El dispositivo devolvió una ubicación no válida.';
+          return;
+        }
+        gpsUltimaPosicion = { lat, lng };
+        if (gpsPrecision) {
+          gpsPrecision.setLatLng([lat, lng]);
+          gpsPrecision.setRadius(precision);
+        } else {
+          gpsPrecision = L.circle([lat, lng], {
+            radius: precision, color: '#8b5cf6', weight: 1, fillColor: '#a78bfa', fillOpacity: 0.12
+          }).addTo(mapaObj);
+        }
+        if (gpsRadio3m) {
+          gpsRadio3m.setLatLng([lat, lng]);
+        } else {
+          gpsRadio3m = L.circle([lat, lng], {
+            radius: 3, color: '#d500f9', weight: 2, fillColor: '#f0abfc', fillOpacity: 0.2
+          }).addTo(mapaObj);
+        }
+        if (gpsMarcador) {
+          gpsMarcador.setLatLng([lat, lng]);
+        } else {
+          gpsMarcador = L.circleMarker([lat, lng], {
+            radius: 9, color: '#ffffff', weight: 3, fillColor: '#d500f9', fillOpacity: 1
+          }).addTo(mapaObj).bindPopup('<strong>Mi ubicación</strong><br>Círculo magenta: radio de 3 m.<br>El aro violeta representa la precisión estimada por el dispositivo.');
+        }
+        const hora = new Date(posicion.timestamp).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        document.getElementById('mapaGpsEstado').textContent =
+          `Ubicación actualizada ${hora} · ${lat.toFixed(6)}, ${lng.toFixed(6)} · precisión estimada ±${Math.round(precision)} m · radio marcado: 3 m`;
+        if (document.getElementById('mapaSeguirGPS').checked) {
+          centrarEnCoordenadas(lat, lng, Math.max(mapaObj.getZoom(), 16));
+        }
+      },
+      error => {
+        const mensajes = {
+          1: 'Permiso de ubicación denegado. Habilítalo en los permisos del navegador.',
+          2: 'Ubicación no disponible. Comprueba la señal o los servicios de ubicación del dispositivo.',
+          3: 'Se agotó el tiempo de espera al obtener la ubicación; el navegador seguirá intentando.'
+        };
+        document.getElementById('mapaGpsEstado').textContent = mensajes[error.code] || `Error de ubicación: ${error.message || 'desconocido'}`;
+        if (error.code === 1) detenerSeguimientoGPS(mensajes[1]);
+      },
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
+    );
+    document.getElementById('btnMiUbicacion').disabled = false;
+  } catch (error) {
+    gpsWatchId = null;
+    document.getElementById('btnMiUbicacion').disabled = false;
+    document.getElementById('btnDetenerGPS').disabled = true;
+    document.getElementById('mapaGpsEstado').textContent =
+      `No se pudo iniciar el seguimiento: ${error.message || 'el navegador rechazó la solicitud.'}`;
+  }
+}
+
+function detenerSeguimientoGPS(mensaje = '') {
+  if (gpsWatchId !== null && navigator.geolocation) navigator.geolocation.clearWatch(gpsWatchId);
+  gpsWatchId = null;
+  document.getElementById('btnMiUbicacion').disabled = false;
+  document.getElementById('btnDetenerGPS').disabled = true;
+  const anterior = gpsUltimaPosicion ? ' Se conserva solo el marcador actual, sin historial.' : '';
+  document.getElementById('mapaGpsEstado').textContent = mensaje || `Seguimiento detenido.${anterior}`;
 }
 
 // ---- GPS ----
