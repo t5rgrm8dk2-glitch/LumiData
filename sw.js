@@ -1,5 +1,5 @@
 // Incrementa VERSION cada vez que cambies index.html para forzar la actualización en los celulares.
-const VERSION = 'v1';
+const VERSION = 'v1.4';
 const APP_CACHE = `lumidata-app-${VERSION}`;
 const LIB_CACHE = 'lumidata-libs-v1';
 const TILE_CACHE = 'lumidata-tiles-v1';

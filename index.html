@@ -496,7 +496,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 <!-- TAB MAPA -->
 <div class="section" id="tab-mapa" style="padding:0;flex-direction:column;height:calc(100vh - 110px)">
   <div class="mapa-controles">
-    <input id="mapaJsonInput" type="file" accept=".json,.kmz,application/json,application/vnd.google-earth.kmz" multiple onchange="importarArchivosMapa(event)" style="display:none">
+    <input id="mapaJsonInput" type="file" multiple onchange="importarArchivosMapa(event)" style="display:none">
     <button class="mapa-primary" onclick="document.getElementById('mapaJsonInput').click()">Cargar JSON/KMZ</button>
     <button onclick="centrarMapa()">Ver elementos</button>
     <select id="mapaProveedor" aria-label="Proveedor cartográfico" onchange="cambiarProveedorMapa()">
@@ -545,7 +545,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </div>
 
 <div class="toast" id="toast"></div>
-<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:var(--text2);opacity:0.45;z-index:50;pointer-events:none;user-select:none">V 1.3.</div>
+<div style="position:fixed;bottom:6px;right:8px;font-size:10px;color:var(--text2);opacity:0.45;z-index:50;pointer-events:none;user-select:none">V 1.4</div>
 
 <script>
 const DB_KEY = 'luminarias_db_v2';
@@ -1162,7 +1162,15 @@ function carpetasPlacemarkKml(placemark) {
 
 async function crearDatasetKmz(archivo) {
   if (archivo.size > 50 * 1024 * 1024) throw new Error('El KMZ supera el límite de 50 MB.');
-  if (typeof JSZip === 'undefined') throw new Error('No está disponible el lector de archivos KMZ (JSZip). Comprueba la conexión e inténtalo de nuevo.');
+  if (typeof JSZip === 'undefined') {
+    await new Promise(resolve => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      s.onload = s.onerror = resolve;
+      document.head.appendChild(s);
+    });
+  }
+  if (typeof JSZip === 'undefined') throw new Error('No está disponible el lector de archivos KMZ (JSZip). Conéctate a internet una vez y vuelve a intentarlo.');
 
   const zip = await JSZip.loadAsync(archivo, { checkCRC32: false, createFolders: false });
   const entradasKml = Object.keys(zip.files).filter(nombre => !zip.files[nombre].dir && /\.kml$/i.test(nombre));
