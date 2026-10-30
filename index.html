@@ -2,6 +2,11 @@
 <html lang="es">
 <head>
 <link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="LUMIDATA">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="theme-color" content="#1a1f2e">
@@ -1555,25 +1560,50 @@ function getGPS() {
     txt.textContent = 'GPS no disponible';
     return;
   }
-  navigator.geolocation.getCurrentPosition(
+  // Sin señal móvil el primer fix satelital puede tardar más de un minuto:
+  // se escuchan lecturas hasta 90 s y se conserva la más precisa.
+  if (gpsCapturaId !== null) navigator.geolocation.clearWatch(gpsCapturaId);
+  clearTimeout(gpsCapturaTimer);
+  const META_M = 10, MAX_MS = 90000;
+  let mejor = null;
+  const aplicar = (pos, final) => {
+    const lt = pos.coords.latitude.toFixed(6);
+    const lg = pos.coords.longitude.toFixed(6);
+    const ac = Math.round(pos.coords.accuracy);
+    document.getElementById('lat').value = lt;
+    document.getElementById('lng').value = lg;
+    document.getElementById('accuracy').value = ac;
+    dot.className = final ? 'gps-dot ok' : 'gps-dot loading';
+    txt.innerHTML = `${final ? 'Ubicación capturada ✓' : 'Mejorando precisión...'}<strong>${lt}, ${lg}</strong><span style="font-size:11px">Precisión: ±${ac}m</span>`;
+  };
+  const terminar = () => {
+    if (gpsCapturaId !== null) navigator.geolocation.clearWatch(gpsCapturaId);
+    gpsCapturaId = null;
+    clearTimeout(gpsCapturaTimer);
+    if (mejor) aplicar(mejor, true);
+    else { dot.className = 'gps-dot err'; txt.textContent = 'Error: Tiempo agotado. Sal a un lugar abierto y reintenta, o usa coordenadas manuales.'; }
+  };
+  gpsCapturaId = navigator.geolocation.watchPosition(
     pos => {
-      const lt = pos.coords.latitude.toFixed(6);
-      const lg = pos.coords.longitude.toFixed(6);
-      const ac = Math.round(pos.coords.accuracy);
-      document.getElementById('lat').value = lt;
-      document.getElementById('lng').value = lg;
-      document.getElementById('accuracy').value = ac;
-      dot.className = 'gps-dot ok';
-      txt.innerHTML = `Ubicación capturada ✓<strong>${lt}, ${lg}</strong><span style="font-size:11px">Precisión: ±${ac}m</span>`;
+      if (!mejor || pos.coords.accuracy < mejor.coords.accuracy) mejor = pos;
+      if (pos.coords.accuracy <= META_M) { terminar(); return; }
+      aplicar(mejor, false);
     },
     err => {
+      if (err.code === 3 && !mejor) return;
+      if (mejor) { terminar(); return; }
+      if (gpsCapturaId !== null) navigator.geolocation.clearWatch(gpsCapturaId);
+      gpsCapturaId = null;
+      clearTimeout(gpsCapturaTimer);
       dot.className = 'gps-dot err';
       const msgs = { 1: 'Permiso denegado', 2: 'Posición no disponible', 3: 'Tiempo agotado' };
       txt.textContent = 'Error: ' + (msgs[err.code] || 'Desconocido');
     },
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    { enableHighAccuracy: true, timeout: MAX_MS, maximumAge: 0 }
   );
+  gpsCapturaTimer = setTimeout(terminar, MAX_MS);
 }
+let gpsCapturaId = null, gpsCapturaTimer = null;
 
 // ---- GPS MODE ----
 let gpsMode = 'auto';
@@ -2644,9 +2674,14 @@ function showToast(msg, type='') {
 <script>
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js')
+        navigator.serviceWorker.register('./sw.js', { scope: './' })
             .then(reg => {
                 console.log('Service Worker registrado');
+                if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+                // Reenvía pendientes automáticamente al recuperar la señal
+                window.addEventListener('online', () => {
+                    if (typeof retrySend === 'function') retrySend();
+                });
             })
             .catch(err => {
                 console.error(err);
