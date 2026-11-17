@@ -1,5 +1,5 @@
 // Incrementa VERSION cada vez que cambies index.html para forzar la actualización en los celulares.
-const VERSION = 'v1.4';
+const VERSION = 'v1.5';
 const APP_CACHE = `lumidata-app-${VERSION}`;
 const LIB_CACHE = 'lumidata-libs-v1';
 const TILE_CACHE = 'lumidata-tiles-v1';
@@ -12,6 +12,8 @@ const LIBS = [
   'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/piexifjs/1.0.6/piexif.js',
   'https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+  'https://cdn.jsdelivr.net/npm/svg2pdf.js@2.5.0/dist/svg2pdf.umd.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
@@ -84,7 +86,7 @@ self.addEventListener('fetch', event => {
   }
 
   // Librerías externas
-  if (url.hostname === 'cdnjs.cloudflare.com' || url.hostname === 'unpkg.com') {
+  if (url.hostname === 'cdnjs.cloudflare.com' || url.hostname === 'unpkg.com' || url.hostname === 'cdn.jsdelivr.net') {
     event.respondWith(cacheFirst(req, LIB_CACHE).catch(() => new Response('', { status: 504 })));
     return;
   }

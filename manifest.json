@@ -1,7 +1,7 @@
 {
   "name": "LUMIDATA - Registro de Luminarias",
   "short_name": "LUMIDATA",
-  "description": "Registro de luminarias de alumbrado público con funcionamiento sin conexión",
+  "description": "LUMIDATA V1.5: registro de alumbrado público y planos técnicos PDF por transformador",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
