@@ -1,6 +1,12 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="LUMIDATA">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="theme-color" content="#1a1f2e">
@@ -202,6 +208,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .trafo-stat span { display:block;font-size:10px;color:var(--text2);overflow-wrap:anywhere; }
   .trafo-stat.led strong { color:#2ecc71; }.trafo-stat.sodio strong { color:#f39c12; }.trafo-stat.mh strong { color:#4aa3df; }.trafo-stat.poste strong { color:#00a6a6; }
   .record-actions { display:flex;gap:6px;flex-shrink:0; }
+  .btn-change-trafo { flex:0 0 auto;width:auto;min-height:32px;margin:0 0 0 8px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:11px;font-weight:700;cursor:pointer; }
+  .trafo-group-heading { display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0; }
+  .trafo-group-heading > span { min-width:0;overflow-wrap:anywhere; }
   .btn-record-action { background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text2);padding:6px;cursor:pointer; }
   .btn-record-action.delete { color:var(--danger); }
   .record-structure { display:inline-block;padding:2px 6px;border-radius:4px;background:var(--surface2);margin-right:4px; }
@@ -221,6 +230,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .modal-actions { display:flex;gap:8px; }
   .modal-actions .btn { margin-bottom:0; }
   @media(max-width:600px) { .trafo-active{top:140px}.trafo-summary{grid-template-columns:repeat(3,minmax(0,1fr))}.record{padding:10px;gap:8px}.record-actions{flex-direction:column} }
+  @media(max-width:420px) { .btn-change-trafo{font-size:10px;padding:5px 6px;margin-left:4px} }
 
   .empty { text-align: center; padding: 48px 20px; color: var(--text2); }
   .empty-icon { font-size: 48px; margin-bottom: 12px; }
@@ -555,7 +565,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     <span id="mapaLeyendaTopologias">Topologías: color por conjunto</span>
   </div>
   <div id="mapaAvisoProveedor" class="mapa-errores" role="status" aria-live="polite"></div>
-  <div id="mapaContainer" style="flex:1;width:100%;"></div>
+  <div id="mapaContainer" style="flex:1;width:100%;min-height:300px"></div>
   <div id="mapaGpsEstado" class="mapa-gps-status" aria-live="polite">Ubicación desactivada. La posición se procesa solo en este dispositivo.</div>
   <div id="mapaErroresJson" class="mapa-errores" role="status" aria-live="polite"></div>
   <div id="mapaInfo" style="padding:8px 16px;background:var(--surface);border-top:1px solid var(--border);font-size:12px;color:var(--text2);flex-shrink:0;text-align:center">
@@ -581,6 +591,36 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     <div class="modal-actions">
       <button class="btn btn-primary" onclick="guardarTransformadorActivo()">Guardar</button>
       <button class="btn btn-secondary" onclick="cerrarModalTransformador()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalCambioTransformador" role="dialog" aria-modal="true" aria-labelledby="tituloCambioTransformador">
+  <div class="modal">
+    <h2 id="tituloCambioTransformador">Cambiar transformador</h2>
+    <div id="pasoEditarTransformador">
+      <p>Transformador actual: <strong id="trafoActualCambio"></strong></p>
+      <div class="field">
+        <label for="trafoExistenteCambio">Usar transformador existente</label>
+        <select id="trafoExistenteCambio"><option value="">Seleccionar existente...</option></select>
+      </div>
+      <div class="field">
+        <label for="trafoNuevoCambio">Nuevo código</label>
+        <input type="text" id="trafoNuevoCambio" maxlength="40" placeholder="Ej: 1T09602" autocomplete="off">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="prepararCambioTransformador()">Continuar</button>
+        <button class="btn btn-secondary" onclick="cerrarCambioTransformador()">Cancelar</button>
+      </div>
+    </div>
+    <div id="pasoConfirmarTransformador" style="display:none">
+      <p><strong>¿Confirmas el cambio de transformador?</strong></p>
+      <p>Transformador actual: <strong id="trafoConfirmarActual"></strong><br>Nuevo transformador: <strong id="trafoConfirmarNuevo"></strong></p>
+      <div id="resumenCambioTransformador" class="info-box"></div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="ejecutarCambioTransformador()">Confirmar cambio</button>
+        <button class="btn btn-secondary" onclick="cerrarCambioTransformador()">Cancelar</button>
+      </div>
     </div>
   </div>
 </div>
@@ -703,7 +743,10 @@ function switchTab(name) {
   document.getElementById('tab-' + name).classList.add('active');
   if (name === 'lista') renderLista();
   if (name === 'exportar') renderExportar();
-  if (name === 'mapa') iniciarMapa();
+  if (name === 'mapa') {
+    iniciarMapa();
+    requestAnimationFrame(() => { if (mapaObj) mapaObj.invalidateSize(); });
+  }
 }
 
 function normalizarTransformador(valor) {
@@ -827,9 +870,9 @@ function _renderMapa() {
     const esPoste = estructuraRegistro(r) === 'Poste';
     const iconSvg = esPoste
       ? '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="9" fill="#008B8B" stroke="#fff" stroke-width="2"/></svg>'
-      : '<svg xmlns="http://www.w3.org/2000/svg" width="34" height="38" viewBox="0 0 34 38"><path d="M7 34V7M7 12H20A10 10 0 0 1 20 32H17" fill="none" stroke="#2b1630" stroke-width="4" stroke-linecap="round"/><path d="M7 34V7M7 12H20A10 10 0 0 1 20 32H17" fill="none" stroke="#FF00E5" stroke-width="2.4" stroke-linecap="round"/></svg>';
+      : '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="27" viewBox="0 0 34 38"><path d="M7 34V7M7 12H20A10 10 0 0 1 20 32H17" fill="none" stroke="#2b1630" stroke-width="4" stroke-linecap="round"/><path d="M7 34V7M7 12H20A10 10 0 0 1 20 32H17" fill="none" stroke="#FF00E5" stroke-width="2.4" stroke-linecap="round"/></svg>';
     const marker = L.marker([lat, lng], {
-      icon: L.divIcon({ className: 'lumi-map-icon', html: iconSvg, iconSize: esPoste ? [30, 30] : [34, 38], iconAnchor: esPoste ? [15, 15] : [7, 34], popupAnchor: [0, -30] })
+      icon: L.divIcon({ className: 'lumi-map-icon', html: iconSvg, iconSize: esPoste ? [30, 30] : [24, 27], iconAnchor: esPoste ? [15, 15] : [5, 24], popupAnchor: [0, -24] })
     }).addTo(mapaObj);
     const safeFoto = typeof r.foto === 'string' && /^data:image\/(?:png|jpe?g|webp);base64,/i.test(r.foto)
       ? `<img src="${r.foto}" style="width:100%;max-height:120px;object-fit:cover;border-radius:6px;margin-top:8px">`
@@ -888,6 +931,18 @@ function crearMapa(centro, zoom) {
       attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a>'
     })
   };
+  ['esri', 'satellite'].forEach(proveedor => {
+    mapaTileLayers[proveedor].on('tileerror', () => {
+      if (mapaProveedorActivo !== proveedor || !mapaObj) return;
+      mapaObj.removeLayer(mapaTileLayers[proveedor]);
+      mapaTileLayers.osm.addTo(mapaObj);
+      mapaProveedorActivo = 'osm';
+      document.getElementById('mapaProveedor').value = 'osm';
+      const aviso = document.getElementById('mapaAvisoProveedor');
+      aviso.textContent = 'No fue posible cargar Esri. Se cambió el mapa base a OpenStreetMap.';
+      aviso.style.display = 'block';
+    });
+  });
   ['osm', 'topo'].forEach(proveedor => {
     mapaTileLayers[proveedor].on('tileerror', () => {
       const aviso = document.getElementById('mapaAvisoProveedor');
@@ -2017,7 +2072,9 @@ function exportarBackupJSON() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = BACKUP_FILENAME;
+  const fecha = new Date().toISOString().split('T')[0];
+  const nombrePerfil = (usuario || 'sin_nombre').replace(/[<>:"/\\|?*\x00-\x1F]+/g, '_').replace(/^_+|_+$/g, '').trim() || 'sin_nombre';
+  a.download = `${fecha}_${nombrePerfil}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -2297,7 +2354,7 @@ function renderLista() {
     const conteo = resumenTransformador(regs);
     const detalleOtros = conteo.otros ? `<div class="trafo-stat"><strong>${conteo.otros}</strong><span>Otros / históricos</span></div>` : '';
     html += `<details class="day-group" open>
-      <summary class="day-header"><span>⚡ TRANSFORMADOR ${escaparHtmlMapa(grupo)}</span><span class="day-count">${regs.length} registros</span></summary>
+      <summary class="day-header"><span class="trafo-group-heading"><span>⚡ TRANSFORMADOR ${escaparHtmlMapa(grupo)}</span><button type="button" class="btn-change-trafo" data-cambiar-transformador="${escaparHtmlMapa(grupo)}">✏️ Cambiar transformador</button></span><span class="day-count">${regs.length} registros</span></summary>
       <div class="trafo-summary">
         <div class="trafo-stat"><strong>${conteo.luminarias}</strong><span>Luminarias</span></div>
         <div class="trafo-stat led"><strong>${conteo.led}</strong><span>LED</span></div>
@@ -2330,6 +2387,98 @@ function renderLista() {
     html += '</details>';
   });
   cont.innerHTML = html;
+  cont.querySelectorAll('[data-cambiar-transformador]').forEach(boton => {
+    boton.addEventListener('click', evento => {
+      evento.preventDefault();
+      evento.stopPropagation();
+      abrirCambioTransformador(boton.dataset.cambiarTransformador);
+    });
+  });
+}
+
+let cambioTransformadorPendiente = null;
+
+function abrirCambioTransformador(transformador) {
+  const actual = normalizarTransformador(transformador);
+  const existentes = [...new Set(getDB().map(registro => normalizarTransformador(registro.transformador)).filter(codigo => codigo && codigo !== actual))]
+    .sort((a,b) => a.localeCompare(b, 'es', {numeric:true}));
+  const selector = document.getElementById('trafoExistenteCambio');
+  selector.replaceChildren(new Option('Seleccionar existente...', ''), ...existentes.map(codigo => new Option(codigo, codigo)));
+  selector.value = '';
+  selector.onchange = () => { if (selector.value) document.getElementById('trafoNuevoCambio').value = selector.value; };
+  document.getElementById('trafoActualCambio').textContent = actual;
+  document.getElementById('trafoNuevoCambio').value = '';
+  document.getElementById('pasoEditarTransformador').style.display = '';
+  document.getElementById('pasoConfirmarTransformador').style.display = 'none';
+  cambioTransformadorPendiente = null;
+  document.getElementById('modalCambioTransformador').classList.add('open');
+}
+
+function prepararCambioTransformador() {
+  const actual = normalizarTransformador(document.getElementById('trafoActualCambio').textContent);
+  const nuevo = normalizarTransformador(document.getElementById('trafoNuevoCambio').value);
+  if (!nuevo) { showToast('⚠️ Ingresa o selecciona el nuevo transformador', 'error'); return; }
+  if (nuevo === actual) { showToast('El código nuevo coincide con el transformador actual', 'warn'); return; }
+  const db = getDB();
+  const afectados = db.filter(registro => normalizarTransformador(registro.transformador) === actual);
+  if (!afectados.length) { showToast('No hay registros asociados a ese transformador', 'warn'); cerrarCambioTransformador(); return; }
+  const resumen = resumenTransformador(afectados);
+  const destinoExiste = db.some(registro => normalizarTransformador(registro.transformador) === nuevo);
+  cambioTransformadorPendiente = { actual, nuevo, ids: afectados.map(registro => registro.id) };
+  document.getElementById('trafoConfirmarActual').textContent = actual;
+  document.getElementById('trafoConfirmarNuevo').textContent = nuevo;
+  document.getElementById('resumenCambioTransformador').innerHTML =
+    `Luminarias: <strong>${resumen.luminarias}</strong><br>Postes: <strong>${resumen.postes}</strong><br>Total de registros: <strong>${afectados.length}</strong>${destinoExiste ? '<br>El destino ya existe; los registros se sumarán a ese grupo.' : ''}`;
+  document.getElementById('pasoEditarTransformador').style.display = 'none';
+  document.getElementById('pasoConfirmarTransformador').style.display = '';
+}
+
+function volverEditarTransformador() {
+  cambioTransformadorPendiente = null;
+  document.getElementById('pasoEditarTransformador').style.display = '';
+  document.getElementById('pasoConfirmarTransformador').style.display = 'none';
+}
+
+function cerrarCambioTransformador() {
+  cambioTransformadorPendiente = null;
+  document.getElementById('modalCambioTransformador').classList.remove('open');
+}
+
+function ejecutarCambioTransformador() {
+  if (!cambioTransformadorPendiente) return;
+  const { actual, nuevo, ids } = cambioTransformadorPendiente;
+  const original = getDB();
+  const respaldo = JSON.stringify(original);
+  const activoAnterior = getTransformadorActivo();
+  const idsAfectados = new Set(ids);
+  const siguientes = original.map(registro => idsAfectados.has(registro.id) && normalizarTransformador(registro.transformador) === actual
+    ? { ...registro, transformador: nuevo }
+    : registro);
+  const cantidad = original.length - siguientes.filter(registro => normalizarTransformador(registro.transformador) === actual).length;
+  if (!cantidad) { showToast('No se modificaron registros; vuelve a abrir el cambio e inténtalo otra vez', 'warn'); cerrarCambioTransformador(); return; }
+  try {
+    saveDB(siguientes);
+    if (normalizarTransformador(activoAnterior) === actual) {
+      store.set(ACTIVE_TRAFO_KEY, nuevo);
+      actualizarIndicadorTransformador();
+    }
+  } catch (error) {
+    store.set(DB_KEY, respaldo);
+    if (activoAnterior) store.set(ACTIVE_TRAFO_KEY, activoAnterior);
+    actualizarIndicadorTransformador();
+    showToast('No se pudo completar el cambio; se restauraron los datos anteriores', 'error');
+    cerrarCambioTransformador();
+    return;
+  }
+  cerrarCambioTransformador();
+  renderLista();
+  renderExportar();
+  actualizarOpcionesTransformador();
+  if (mapaObj) actualizarMapa();
+  const sincronizados = original.filter(registro => idsAfectados.has(registro.id) && registro.syncStatus === 'synced').length;
+  showToast(sincronizados
+    ? `✅ ${cantidad} registros cambiados localmente. El webhook actual no actualiza filas existentes.`
+    : `✅ ${cantidad} registros asociados a ${nuevo}`, sincronizados ? 'warn' : 'success');
 }
 
 function editarRegistro(id) {
@@ -3399,6 +3548,19 @@ function showToast(msg, type='') {
   t.textContent = msg;
   t.className = 'toast show ' + type;
   setTimeout(() => { t.className = 'toast'; }, 3000);
+}
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+            .then(reg => {
+                console.log('Service Worker registrado');
+            })
+            .catch(err => {
+                console.error(err);
+            });
+    });
 }
 </script>
 </body>
